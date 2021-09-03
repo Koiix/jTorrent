@@ -1,7 +1,8 @@
-from bencodepy import bencode, bdecode
+import bencodepy
 import logging
 import hashlib
 import math
+import time
 
 class Torrent(object):
     def __init__(self):
@@ -16,17 +17,19 @@ class Torrent(object):
         self.number_of_pieces: int = 0
 
     def load(self, path):
+        bencode = bencodepy.Bencode('utf-8')
         with open(path, 'rb') as file:
-            contents = bdecode(file)
+            contents = bencodepy.decode(file.read())
+            print(contents)
 
         self.torrent_file = contents
         self.piece_length = self.torrent_file['info']['piece length']
         self.pieces = self.torrent_file['info']['pieces']
-        raw_info_hash = bencode(self.torrent_file['info'])
+        raw_info_hash = bencodepy.encode(self.torrent_file['info'])
         self.info_hash = hashlib.sha1(raw_info_hash).digest()
         self.peer_id = self.generate_peer_id()
         self.announce_list = self.get_trakers()
-        #self.init_files()
+        self.init_files()
         self.number_of_pieces = math.ceil(self.total_length / self.piece_length)
         #logging.debug(self.announce_list)
         #logging.debug(self.file_names)
@@ -64,7 +67,7 @@ class Torrent(object):
 
     def generate_peer_id(self):
         seed = str(time.time())
-        return hashlib.sha1(seed.encode('utf-8')).digest()
+        return "-JT0001-" + hashlib.sha1(seed.encode('utf-8')).digest()[:12]
 
     def __repr__(self):
         print(self.torrent_file)
