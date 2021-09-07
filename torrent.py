@@ -1,73 +1,74 @@
-import bencodepy
+from bcoding import bencode, bdecode
 import logging
 import hashlib
-import math
 import time
+import os
 
 class Torrent(object):
     def __init__(self):
-        self.torrent_file = {}
+        self.meta_info = {}
         self.total_length: int = 0
         self.piece_length: int = 0
-        self.pieces: int = 0
+        self.piece_hashes: int = 0
         self.info_hash: str = ''
         self.peer_id: str = ''
-        self.announce_list = ''
-        self.file_names = []
-        self.number_of_pieces: int = 0
+        self.created_by: str = ''
+        self.comment: str = ''
+        self.announce_list = []
+        self.files = []
+        self.num_pieces: int = 0
 
     def load(self, path):
-        bencode = bencodepy.Bencode('utf-8')
         with open(path, 'rb') as file:
-            contents = bencodepy.decode(file.read())
-            print(contents)
-
-        self.torrent_file = contents
-        self.piece_length = self.torrent_file['info']['piece length']
-        self.pieces = self.torrent_file['info']['pieces']
-        raw_info_hash = bencodepy.encode(self.torrent_file['info'])
-        self.info_hash = hashlib.sha1(raw_info_hash).digest()
-        self.peer_id = self.generate_peer_id()
-        self.announce_list = self.get_trakers()
-        self.init_files()
-        self.number_of_pieces = math.ceil(self.total_length / self.piece_length)
-        #logging.debug(self.announce_list)
-        #logging.debug(self.file_names)
-
-        assert(self.total_length > 0)
-        assert(len(self.file_names) > 0)
+            self.meta_info = bdecode(file.read())
+        self._parse()
+        self._init_files()
 
         return self
 
-    def init_files(self):
-        root = self.torrent_file['info']['name']
+    def _parse(self):
 
-        if 'files' in self.torrent_file['info']:
-            if not os.path.exists(root):
-                os.mkdir(root, 0o0766 )
+        self.piece_length = self.meta_info['info']['piece length']
+        self.piece_hashes = self.meta_info['info']['pieces']
+        raw_info_hash = bencode(self.meta_info['info'])
+        self.info_hash = hashlib.sha1(raw_info_hash).digest()
+        self.peer_id = self._generate_peer_id()
+        if 'announce-list' in self.meta_info:
+            self.announce_list = self.meta_info['announce-list']
+        else:
+            self.announce_list = [[self.meta_info['announce']]]
+        self.num_pieces = int(len(self.piece_hashes)/20)
 
-            for file in self.torrent_file['info']['files']:
-                path_file = os.path.join(root, *file["path"])
+    def _init_files(self):
+        name = self.meta_info['info']['name']
 
-                if not os.path.exists(os.path.dirname(path_file)):
-                    os.makedirs(os.path.dirname(path_file))
+        if 'files' in self.meta_info['info']:
+            if not os.path.exists(name):
+                os.mkdir(name)
 
-                self.file_names.append({"path": path_file , "length": file["length"]})
+            for file in self.meta_info['info']['files']:
+                full_path = os.path.join(name, *file["path"])
+
+                if not os.path.exists(os.path.dirname(full_path)):
+                    os.makedirs(os.path.dirname(full_path))
+
+                self.files.append({"path": full_path , "length": file["length"]})
                 self.total_length += file["length"]
 
         else:
-            self.file_names.append({"path": root , "length": self.torrent_file['info']['length']})
-            self.total_length = self.torrent_file['info']['length']
+            self.files.append({"path": name, "length": self.meta_info['info']['length']})
+            self.total_length = self.meta_info['info']['length']
 
-    def get_trakers(self):
-        if 'announce-list' in self.torrent_file:
-            return self.torrent_file['announce-list']
-        else:
-            return [[self.torrent_file['announce']]]
+        assert(self.total_length > 0)
+        assert(len(self.files) > 0)
+        
 
-    def generate_peer_id(self):
+    def _generate_peer_id(self):
         seed = str(time.time())
-        return "-JT0001-" + hashlib.sha1(seed.encode('utf-8')).digest()[:12]
+        peer_id = b'-JT0001-' + hashlib.sha1(seed.encode('utf-8')).digest()[:12]
+        assert(len(peer_id)==20)
+        return peer_id
+
 
     def __repr__(self):
-        print(self.torrent_file)
+        return str(self.meta_info)
